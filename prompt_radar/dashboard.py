@@ -1,6 +1,6 @@
 """
 Интерактивный дашборд «Промпт-радар» на Streamlit.
-Поддерживает загрузку файлов и LLM-аналитику через API.
+Редакционный корпоративный дизайн.
 """
 
 import streamlit as st
@@ -17,7 +17,7 @@ from prompt_radar.engine import build_analytics
 from prompt_radar.llm_client import LLMClient
 
 
-# ── Парсинг загруженных файлов (inline для отказоустойчивости) ─────────
+# ── Парсинг файлов ─────────────────────────────────────────────────────
 
 def _find_column(df, candidates):
     for c in candidates:
@@ -53,7 +53,6 @@ def parse_uploaded_file(uploaded_file) -> pd.DataFrame:
     else:
         raise ValueError(f"Неподдерживаемый формат: {name}")
 
-    # Нормализация колонок
     text_col = _find_column(df, [
         "request_text", "text", "query", "prompt", "message",
         "request", "input", "user_message", "запрос", "текст", "промпт",
@@ -100,114 +99,503 @@ def parse_uploaded_file(uploaded_file) -> pd.DataFrame:
     return df
 
 
+# ── Конфигурация ───────────────────────────────────────────────────────
+
 st.set_page_config(
-    page_title="Промпт-радар | Аналитика ИИ-агентов",
-    page_icon="📡",
+    page_title="Промпт-радар",
+    page_icon="radar",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.markdown("""
+# ── Палитра ────────────────────────────────────────────────────────────
+
+P = {
+    "purple": "#4A00B4",
+    "purple_light": "#7B2FE0",
+    "purple_dark": "#3D00A0",
+    "purple_bg": "#F3EDFF",
+    "white": "#FFFFFF",
+    "bg": "#FAFAF8",
+    "text": "#1A1A1A",
+    "text_secondary": "#666666",
+    "border": "#E0E0E0",
+    "success": "#166534",
+    "warning": "#92400E",
+    "danger": "#991B1B",
+    "success_bg": "#F0FDF4",
+    "warning_bg": "#FEFCE8",
+    "danger_bg": "#FEF2F2",
+}
+
+CHART_COLORS = [
+    "#4A00B4", "#7B2FE0", "#9B59F0", "#B47FFF",
+    "#5C00CC", "#3D00A0", "#2D0080", "#8B5CF6",
+    "#A78BFA", "#C4B5FD", "#DDD6FE", "#EDE9FE",
+]
+
+
+# ── Стили ──────────────────────────────────────────────────────────────
+
+st.markdown(f"""
 <style>
-    .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 20px;
-        border-radius: 12px;
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800;900&family=Inter:wght@400;500;600&display=swap');
+
+    html, body, [class*="css"] {{
+        font-family: 'Inter', -apple-system, sans-serif;
+        color: {P['text']};
+        background: {P['bg']};
+    }}
+
+    /* ── Типографика ─────────────────────────────────────────────── */
+    h1 {{
+        font-family: 'Playfair Display', Georgia, serif !important;
+        font-weight: 800 !important;
+        font-size: 2rem !important;
+        letter-spacing: -0.03em !important;
+        color: {P['text']} !important;
+        line-height: 1.1 !important;
+    }}
+    h2 {{
+        font-family: 'Playfair Display', Georgia, serif !important;
+        font-weight: 700 !important;
+        font-size: 1.35rem !important;
+        letter-spacing: -0.02em !important;
+        color: {P['text']} !important;
+        margin-top: 3rem !important;
+        margin-bottom: 1.2rem !important;
+    }}
+    h3 {{
+        font-family: 'Playfair Display', Georgia, serif !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        color: {P['text']} !important;
+    }}
+
+    /* ── Убираем Streamlit-шум ───────────────────────────────────── */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+
+    /* ── Sidebar ─────────────────────────────────────────────────── */
+    [data-testid="stSidebar"] {{
+        background: {P['white']};
+        border-right: 1px solid {P['border']};
+    }}
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {{
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.7rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: {P['text_secondary']} !important;
+        margin-top: 2rem !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{
+        font-size: 0.85rem;
+        color: {P['text_secondary']};
+    }}
+
+    /* ── Кнопки ──────────────────────────────────────────────────── */
+    .stButton > button {{
+        border-radius: 0 !important;
+        font-weight: 600 !important;
+        font-size: 0.8rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 10px 28px !important;
+        border: 1px solid {P['border']};
+        background: {P['white']};
+        color: {P['text']};
+        transition: all 0.2s;
+    }}
+    .stButton > button:hover {{
+        background: {P['purple']};
+        color: {P['white']};
+        border-color: {P['purple']};
+    }}
+
+    /* ── Табы ────────────────────────────────────────────────────── */
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 0;
+        border-bottom: 2px solid {P['border']};
+        background: transparent;
+        padding: 0;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        border-radius: 0 !important;
+        padding: 12px 24px !important;
+        font-family: 'Inter', sans-serif;
+        font-weight: 600 !important;
+        font-size: 0.8rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: {P['text_secondary']};
+        background: transparent;
+        border: none;
+    }}
+    .stTabs [aria-selected="true"] {{
+        color: {P['purple']} !important;
+        border-bottom: 2px solid {P['purple']} !important;
+        margin-bottom: -2px;
+    }}
+    .stTabs [data-baseweb="tab-border"] {{
+        display: none;
+    }}
+
+    /* ── Экспандеры ──────────────────────────────────────────────── */
+    details {{
+        background: {P['white']};
+        border: 1px solid {P['border']};
+        border-radius: 0 !important;
+        overflow: hidden;
+        margin-bottom: 8px;
+    }}
+    details summary {{
+        font-family: 'Inter', sans-serif;
+        font-weight: 500;
+        font-size: 0.9rem;
+        padding: 14px 20px;
+    }}
+    details[open] summary {{
+        border-bottom: 1px solid {P['border']};
+    }}
+
+    /* ── Метрики ─────────────────────────────────────────────────── */
+    [data-testid="stMetric"] {{
+        background: {P['white']};
+        border: 1px solid {P['border']};
+        border-radius: 0 !important;
+        padding: 20px 24px;
+    }}
+    [data-testid="stMetric"] label {{
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.7rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: {P['text_secondary']} !important;
+    }}
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {{
+        font-family: 'Playfair Display', serif !important;
+        font-size: 1.8rem !important;
+        font-weight: 700 !important;
+        color: {P['text']} !important;
+    }}
+
+    /* ── DataFrame ───────────────────────────────────────────────── */
+    [data-testid="stDataFrame"] {{
+        border: 1px solid {P['border']};
+        border-radius: 0 !important;
+    }}
+
+    /* ── Alert-блоки ─────────────────────────────────────────────── */
+    [data-testid="stAlert"] {{
+        border-radius: 0 !important;
+    }}
+
+    /* ── Разделитель ─────────────────────────────────────────────── */
+    hr {{
+        border: none;
+        border-top: 1px solid {P['border']};
+        margin: 3rem 0;
+    }}
+
+    /* ── Заголовок страницы ──────────────────────────────────────── */
+    .hero-header {{
+        background: linear-gradient(135deg, {P['purple_dark']}, {P['purple_light']});
+        padding: 48px 56px;
+        margin: -1rem -1rem 2rem -1rem;
         color: white;
+    }}
+    .hero-header h1 {{
+        color: white !important;
+        font-size: 2.2rem !important;
+        margin: 0 !important;
+    }}
+    .hero-header p {{
+        color: rgba(255,255,255,0.75);
+        font-size: 0.95rem;
+        margin: 8px 0 0 0;
+        font-family: 'Inter', sans-serif;
+    }}
+
+    /* ── Карточки KPI ────────────────────────────────────────────── */
+    .kpi-grid {{
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+        background: {P['border']};
+        border: 1px solid {P['border']};
+        margin: 24px 0;
+    }}
+    .kpi-cell {{
+        background: {P['white']};
+        padding: 28px 24px;
         text-align: center;
-    }
-    .metric-value { font-size: 2em; font-weight: bold; }
-    .metric-label { font-size: 0.9em; opacity: 0.8; }
-    .upload-area {
-        border: 2px dashed #667eea;
-        border-radius: 12px;
-        padding: 40px;
+    }}
+    .kpi-value {{
+        font-family: 'Playfair Display', serif;
+        font-size: 2rem;
+        font-weight: 700;
+        color: {P['text']};
+        line-height: 1;
+    }}
+    .kpi-label {{
+        font-family: 'Inter', sans-serif;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: {P['text_secondary']};
+        margin-top: 10px;
+    }}
+
+    /* ── Карточки сценариев ──────────────────────────────────────── */
+    .scenario-card {{
+        background: {P['white']};
+        border: 1px solid {P['border']};
+        padding: 28px 32px;
+        margin-bottom: 12px;
+    }}
+    .scenario-title {{
+        font-family: 'Playfair Display', serif;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: {P['text']};
+        margin-bottom: 6px;
+    }}
+    .scenario-cat {{
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: {P['purple']};
+        margin-bottom: 12px;
+    }}
+    .scenario-meta {{
+        display: flex;
+        gap: 1px;
+        background: {P['border']};
+        border: 1px solid {P['border']};
+        margin: 16px 0;
+    }}
+    .scenario-meta-item {{
+        background: {P['bg']};
+        padding: 10px 16px;
+        flex: 1;
         text-align: center;
-        margin: 20px 0;
-    }
-    .insight-box {
-        background: #f8f9fa;
-        border-left: 4px solid #667eea;
-        padding: 16px;
-        margin: 8px 0;
-        border-radius: 0 8px 8px 0;
-    }
-    .pain-tag {
-        background: #ffeaa7;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.85em;
-        margin: 2px;
+    }}
+    .scenario-meta-val {{
+        font-family: 'Playfair Display', serif;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: {P['text']};
+    }}
+    .scenario-meta-label {{
+        font-size: 0.6rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: {P['text_secondary']};
+        margin-top: 4px;
+    }}
+
+    /* ── Боли и формулировки ─────────────────────────────────────── */
+    .pain-item {{
+        background: {P['danger_bg']};
+        border-left: 3px solid #DC2626;
+        padding: 10px 16px;
+        margin: 6px 0;
+        font-size: 0.85rem;
+        color: {P['danger']};
+    }}
+    .phrase-item {{
+        background: {P['success_bg']};
+        border-left: 3px solid #16A34A;
+        padding: 10px 16px;
+        margin: 6px 0;
+        font-size: 0.85rem;
+        font-style: italic;
+        color: {P['success']};
+    }}
+
+    /* ── Бейджи ──────────────────────────────────────────────────── */
+    .badge {{
         display: inline-block;
-    }
-    .auto-high { color: #00b894; font-weight: bold; }
-    .auto-medium { color: #fdcb6e; font-weight: bold; }
-    .auto-low { color: #d63031; font-weight: bold; }
+        padding: 3px 12px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border: 1px solid;
+    }}
+    .badge-high {{ color: {P['success']}; border-color: #BBF7D0; background: {P['success_bg']}; }}
+    .badge-medium {{ color: {P['warning']}; border-color: #FDE68A; background: {P['warning_bg']}; }}
+    .badge-low {{ color: {P['danger']}; border-color: #FECACA; background: {P['danger_bg']}; }}
+
+    /* ── Рекомендации ────────────────────────────────────────────── */
+    .rec-card {{
+        background: {P['white']};
+        border: 1px solid {P['border']};
+        border-left: 3px solid {P['purple']};
+        padding: 20px 24px;
+        margin-bottom: 8px;
+    }}
+    .rec-num {{
+        display: inline-block;
+        width: 22px;
+        height: 22px;
+        line-height: 22px;
+        text-align: center;
+        background: {P['purple']};
+        color: white;
+        font-size: 0.7rem;
+        font-weight: 700;
+        margin-right: 12px;
+        vertical-align: middle;
+    }}
+    .rec-text {{
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: {P['text']};
+    }}
+
+    /* ── Секции ──────────────────────────────────────────────────── */
+    .section-marker {{
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background: {P['purple']};
+        margin-right: 8px;
+        vertical-align: middle;
+    }}
+    .section-label {{
+        font-family: 'Inter', sans-serif;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: {P['text_secondary']};
+    }}
+
+    /* ── Таблица категорий ───────────────────────────────────────── */
+    .cat-row {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 0;
+        border-bottom: 1px solid {P['border']};
+    }}
+    .cat-name {{
+        font-weight: 500;
+        font-size: 0.9rem;
+    }}
+    .cat-count {{
+        font-family: 'Playfair Display', serif;
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: {P['purple']};
+    }}
+    .cat-pct {{
+        font-size: 0.8rem;
+        color: {P['text_secondary']};
+        margin-left: 8px;
+    }}
+
+    /* ── Загрузка ────────────────────────────────────────────────── */
+    .upload-zone {{
+        border: 2px dashed {P['border']};
+        padding: 48px 32px;
+        text-align: center;
+        background: {P['white']};
+    }}
+    .upload-zone:hover {{
+        border-color: {P['purple']};
+    }}
+
+    /* ── Примеры запросов ────────────────────────────────────────── */
+    .example-item {{
+        padding: 10px 0;
+        border-bottom: 1px solid {P['border']};
+        font-size: 0.85rem;
+        color: {P['text_secondary']};
+        line-height: 1.5;
+    }}
+    .example-num {{
+        font-family: 'Playfair Display', serif;
+        font-weight: 700;
+        color: {P['purple']};
+        margin-right: 8px;
+    }}
+
+    /* ── Адаптивность ────────────────────────────────────────────── */
+    @media (max-width: 768px) {{
+        .kpi-grid {{
+            grid-template-columns: repeat(2, 1fr);
+        }}
+        .hero-header {{
+            padding: 32px 24px;
+        }}
+        .hero-header h1 {{
+            font-size: 1.6rem !important;
+        }}
+    }}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Боковая панель: настройки ──────────────────────────────────────────
+# ── Sidebar ────────────────────────────────────────────────────────────
 
 def render_sidebar():
-    """Рендерит боковую панель с настройками LLM и возврывает конфигурацию."""
-    st.sidebar.markdown("## ⚙️ Настройки")
+    with st.sidebar:
+        st.markdown(f"""
+        <div style="padding:20px 0 24px 0;border-bottom:1px solid {P['border']};margin-bottom:24px">
+            <div style="display:flex;align-items:center;gap:10px">
+                <div style="width:28px;height:28px;background:{P['purple']};display:flex;
+                align-items:center;justify-content:center">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10"/>
+                        <circle cx="12" cy="12" r="5"/>
+                        <circle cx="12" cy="12" r="1.5"/>
+                    </svg>
+                </div>
+                <span style="font-family:'Playfair Display',serif;font-weight:800;font-size:1rem;
+                letter-spacing:-0.02em">Промпт-радар</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # ── LLM API ────────────────────────────────────────────────────────
-    st.sidebar.markdown("### 🤖 LLM API (опционально)")
-    use_llm = st.sidebar.toggle("Использовать LLM для аналитики", value=False)
+        st.markdown("### LLM API")
+        use_llm = st.toggle("Использовать LLM", value=False)
 
-    llm_client = None
-    if use_llm:
-        base_url = st.sidebar.text_input(
-            "Base URL API",
-            value="https://api.openai.com/v1",
-            help="OpenAI, vLLM, Ollama, LM Studio и др.",
-        )
-        api_key = st.sidebar.text_input(
-            "API Key",
-            type="password",
-            help="Ключ API (sk-... для OpenAI)",
-        )
-        model = st.sidebar.text_input(
-            "Модель",
-            value="gpt-4o-mini",
-            help="Название модели (gpt-4o-mini, llama3, mistral и т.д.)",
-        )
+        llm_client = None
+        if use_llm:
+            base_url = st.text_input("Base URL", value="https://api.openai.com/v1")
+            api_key = st.text_input("API Key", type="password")
+            model = st.text_input("Модель", value="gpt-4o-mini")
 
-        if api_key:
-            llm_client = LLMClient(
-                base_url=base_url,
-                api_key=api_key,
-                model=model,
-            )
-            if st.sidebar.button("🔌 Проверить подключение"):
-                with st.spinner("Проверяю..."):
-                    ok, msg = llm_client.test_connection()
-                    if ok:
-                        st.sidebar.success(msg)
-                    else:
-                        st.sidebar.error(f"Ошибка: {msg}")
-        else:
-            st.sidebar.warning("Введите API Key для активации LLM")
+            if api_key:
+                llm_client = LLMClient(base_url=base_url, api_key=api_key, model=model)
+                if st.button("Проверить подключение"):
+                    with st.spinner():
+                        ok, msg = llm_client.test_connection()
+                        st.success(msg) if ok else st.error(msg)
+            else:
+                st.caption("Введите API Key")
 
-    # ── Настройки кластеризации ────────────────────────────────────────
-    st.sidebar.markdown("### 📊 Параметры анализа")
-    n_clusters = st.sidebar.slider(
-        "Число кластеров (сценариев)",
-        min_value=5, max_value=30, value=15,
-        help="Больше кластеров = более детальные сценарии",
-    )
+        st.markdown("---")
+        st.markdown("### Параметры")
+        n_clusters = st.slider("Кластеров", 5, 30, 15)
 
-    # ── Информация ─────────────────────────────────────────────────────
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### ℹ️ О проекте")
-    st.sidebar.info(
-        "**Промпт-радар** автоматически структурирует логи запросов к ИИ-агентам:\n"
-        "- Классифицирует по категориям\n"
-        "- Находит сценарии (use-cases)\n"
-        "- Генерирует саммари\n"
-        "- Строит дашборд с рекомендациями"
-    )
+        st.markdown("---")
+        st.markdown(f"""
+        <div style="padding:16px 0;font-size:0.75rem;color:{P['text_secondary']};line-height:1.6">
+            Промпт-радар v1.0<br>
+            Аналитика ИИ-агентов
+        </div>
+        """, unsafe_allow_html=True)
 
     return llm_client, n_clusters
 
@@ -215,31 +603,28 @@ def render_sidebar():
 # ── Загрузка данных ────────────────────────────────────────────────────
 
 def load_data():
-    """Загружает данные: через файл или из demo-датасета."""
-    st.markdown("## 📂 Загрузка данных")
+    st.markdown(f"""
+    <div class="section-label" style="margin-bottom:16px">
+        <span class="section-marker"></span>Загрузка данных
+    </div>
+    """, unsafe_allow_html=True)
 
-    col_upload, col_demo = st.columns([2, 1])
-
+    col_upload, col_demo = st.columns([3, 2])
     df = None
-    source_name = None
 
     with col_upload:
         uploaded_file = st.file_uploader(
-            "Загрузите CSV или JSON с логами запросов",
+            "CSV или JSON с логами",
             type=["csv", "json", "tsv", "txt"],
-            help="Файл должен содержать колонку с текстом запроса. "
-                 "Опционально: timestamp, user_id, token_count, satisfaction_score",
         )
         if uploaded_file:
             try:
                 df = parse_uploaded_file(uploaded_file)
-                source_name = uploaded_file.name
-                st.success(f"Загружено {len(df)} записей из {uploaded_file.name}")
+                st.success(f"Загружено {len(df)} записей")
             except Exception as e:
-                st.error(f"Ошибка парсинга: {e}")
+                st.error(str(e))
 
     with col_demo:
-        st.markdown("#### Или используйте демо-датасет")
         data_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
         )
@@ -248,109 +633,138 @@ def load_data():
             if os.path.exists(data_dir) else []
         )
         if csv_files:
-            demo_file = st.selectbox("Demo-файл", csv_files)
-            if st.button("📊 Загрузить демо-данные"):
+            demo_file = st.selectbox("Demo-датасет", csv_files)
+            if st.button("Загрузить демо"):
                 df = pd.read_csv(os.path.join(data_dir, demo_file))
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
-                source_name = demo_file
-                st.success(f"Загружено {len(df)} записей из {demo_file}")
+                st.success(f"Загружено {len(df)} записей")
 
-    # Подсказка по формату
-    with st.expander("📋 Поддерживаемые форматы данных"):
-        st.markdown("""
-        **Минимальный формат** — CSV/JSON с одной колонкой текста запросов.
-
-        | Колонка | Обязательна | Описание |
-        |---------|-------------|----------|
-        | request_text / text / query / prompt | Да | Текст запроса пользователя |
-        | timestamp / created_at | Нет | Дата/время (генерируется если нет) |
-        | user_id / user | Нет | ID пользователя |
-        | token_count / tokens | Нет | Кол-во токенов (оценка если нет) |
-        | response_time_sec | Нет | Время ответа в секундах |
-        | satisfaction_score / rating | Нет | Оценка 1-5 |
-        | category / true_category | Нет | Истинная категория (для валидации) |
-
-        **JSON** — массив объектов или объект с ключом `logs`/`requests`/`data`.
-        """)
-
-    return df, source_name
+    return df
 
 
-# ── KPI карточки ───────────────────────────────────────────────────────
+# ── KPI ────────────────────────────────────────────────────────────────
 
 def render_kpi(summary: dict):
-    """Рендерит блок KPI-карточек."""
-    st.markdown("## 📊 Обзор")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Всего запросов", f"{summary['total_requests']:,}")
-    with col2:
-        st.metric("Уникальных пользователей", summary["unique_users"])
-    with col3:
-        st.metric("Средний размер (токены)", f"{summary['avg_tokens']:,}")
-    with col4:
-        sat = summary["avg_satisfaction"]
-        st.metric("Удовлетворённость", f"{sat}/5" if sat else "N/A")
+    sat = summary["avg_satisfaction"]
+    sat_display = f"{sat}/5" if sat else "—"
+    mode = "LLM" if summary.get("llm_enabled") else "Keywords"
 
-    col5, col6, col7, col8 = st.columns(4)
-    with col5:
-        st.metric("Категорий", summary["num_categories"])
-    with col6:
-        st.metric("Сценариев", summary["num_use_cases"])
-    with col7:
-        st.metric("Ср. время ответа", f"{summary['avg_response_time']}с")
-    with col8:
-        mode = "🤖 LLM" if summary.get("llm_enabled") else "🔤 Keywords"
-        st.metric("Режим анализа", mode)
-    st.markdown("---")
+    st.markdown(f"""
+    <div class="kpi-grid">
+        <div class="kpi-cell">
+            <div class="kpi-value">{summary['total_requests']:,}</div>
+            <div class="kpi-label">Запросов</div>
+        </div>
+        <div class="kpi-cell">
+            <div class="kpi-value">{summary['unique_users']}</div>
+            <div class="kpi-label">Пользователей</div>
+        </div>
+        <div class="kpi-cell">
+            <div class="kpi-value">{summary['avg_tokens']:,}</div>
+            <div class="kpi-label">Ср. токенов</div>
+        </div>
+        <div class="kpi-cell">
+            <div class="kpi-value">{sat_display}</div>
+            <div class="kpi-label">Удовлетворённость</div>
+        </div>
+    </div>
+    <div class="kpi-grid">
+        <div class="kpi-cell">
+            <div class="kpi-value">{summary['num_categories']}</div>
+            <div class="kpi-label">Категорий</div>
+        </div>
+        <div class="kpi-cell">
+            <div class="kpi-value">{summary['num_use_cases']}</div>
+            <div class="kpi-label">Сценариев</div>
+        </div>
+        <div class="kpi-cell">
+            <div class="kpi-value">{summary['avg_response_time']}с</div>
+            <div class="kpi-label">Ср. время ответа</div>
+        </div>
+        <div class="kpi-cell">
+            <div class="kpi-value">{mode}</div>
+            <div class="kpi-label">Режим анализа</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ── Tab 1: Категории ──────────────────────────────────────────────────
 
 def tab_categories(analytics: dict):
-    st.markdown("### Распределение по категориям")
     cat_stats = analytics["category_stats"]
     cat_df = pd.DataFrame({
         "Категория": list(cat_stats.keys()),
         "Количество": list(cat_stats.values()),
     }).sort_values("Количество", ascending=False)
+    total = cat_df["Количество"].sum()
 
-    col_chart, col_table = st.columns([2, 1])
+    col_chart, col_list = st.columns([3, 2])
+
     with col_chart:
         fig = px.pie(
             cat_df, values="Количество", names="Категория",
-            hole=0.4, color_discrete_sequence=px.colors.qualitative.Set2,
+            hole=0.55,
+            color_discrete_sequence=CHART_COLORS,
         )
-        fig.update_layout(height=450, margin=dict(t=20, b=20))
+        fig.update_traces(
+            textinfo="percent",
+            textfont_size=11,
+            marker=dict(line=dict(color=P["white"], width=2)),
+        )
+        fig.update_layout(
+            height=400, margin=dict(t=20, b=20, l=20, r=20),
+            showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Inter, sans-serif", size=12, color=P["text_secondary"]),
+        )
         st.plotly_chart(fig, use_container_width=True)
-    with col_table:
-        cat_df["Доля %"] = (cat_df["Количество"] / cat_df["Количество"].sum() * 100).round(1)
-        st.dataframe(cat_df, use_container_width=True, hide_index=True)
 
-    st.markdown("### Сценарии по категориям")
+    with col_list:
+        for _, row in cat_df.iterrows():
+            pct = round(row["Количество"] / total * 100, 1)
+            st.markdown(f"""
+            <div class="cat-row">
+                <span class="cat-name">{row['Категория']}</span>
+                <span>
+                    <span class="cat-count">{row['Количество']}</span>
+                    <span class="cat-pct">{pct}%</span>
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="section-label" style="margin:32px 0 16px 0">
+        <span class="section-marker"></span>Сценарии по категориям
+    </div>
+    """, unsafe_allow_html=True)
+
     for cat, sc_list in analytics["scenarios_by_cat"].items():
-        with st.expander(f"{cat} ({len(sc_list)} сценариев)"):
+        with st.expander(f"{cat}  —  {len(sc_list)} сценариев"):
             for sc in sorted(sc_list, key=lambda x: x["size"], reverse=True):
                 terms = ", ".join(sc["top_terms"][:5])
-                name = sc.get("name", "")
-                label = f"**{name}**" if name else f"**Сценарий #{sc['id']}**"
-                st.markdown(f"{label} — {sc['size']} запросов")
-                st.caption(f"Ключевые слова: {terms}")
+                name = sc.get("name", f"Сценарий #{sc['id']}")
+                st.markdown(f"**{name}**  ·  {sc['size']} запросов")
+                st.caption(terms)
 
 
 # ── Tab 2: Сценарии ───────────────────────────────────────────────────
 
 def tab_scenarios(analytics: dict):
-    st.markdown("### Выделенные сценарии (use-cases)")
-
-    sort_by = st.selectbox(
-        "Сортировать по", ["size", "avg_satisfaction", "avg_response_time"],
-        format_func=lambda x: {
-            "size": "Кол-во запросов",
-            "avg_satisfaction": "Удовлетворённость",
-            "avg_response_time": "Время ответа",
-        }[x],
-    )
+    col_h, col_s = st.columns([4, 1])
+    with col_h:
+        st.markdown(f"""
+        <div class="section-label" style="margin-bottom:16px">
+            <span class="section-marker"></span>Выделенные сценарии
+        </div>
+        """, unsafe_allow_html=True)
+    with col_s:
+        sort_by = st.selectbox(
+            "Сортировка", ["size", "avg_satisfaction", "avg_response_time"],
+            format_func=lambda x: {"size": "Объём", "avg_satisfaction": "Оценка", "avg_response_time": "Скорость"}[x],
+            label_visibility="collapsed",
+        )
 
     use_cases = analytics["use_cases"]
     sorted_cases = sorted(
@@ -360,84 +774,123 @@ def tab_scenarios(analytics: dict):
     )
 
     for uc_id, uc in sorted_cases:
-        sat_display = f"{uc['avg_satisfaction']}/5" if uc.get('avg_satisfaction') else "—"
+        sat = uc.get("avg_satisfaction")
+        sat_str = f"{sat}/5" if sat else "—"
         name = uc.get("name", f"Сценарий #{uc_id}")
+        cat = uc["dominant_category"]
+        size = uc["size"]
         auto = uc.get("automation_potential", "")
+        auto_cls = {"high": "badge-high", "medium": "badge-medium", "low": "badge-low"}.get(auto, "")
+        auto_badge = f'<span class="badge {auto_cls}">{auto}</span>' if auto else ""
 
-        auto_icon = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(auto, "⚪")
-        header = f"🎯 {name} | {uc['dominant_category']} | {uc['size']} запросов | ⭐ {sat_display}"
+        with st.expander(f"{name}  ·  {cat}  ·  {size} запросов  ·  {sat_str}"):
+            st.markdown(f"""
+            <div class="scenario-cat">{cat} {auto_badge}</div>
+            """, unsafe_allow_html=True)
 
-        with st.expander(header):
-            # Описание
             desc = uc.get("description", uc.get("summary", ""))
-            st.markdown(f"**Описание:** {desc}")
+            if desc:
+                st.markdown(f'<p style="font-size:0.9rem;line-height:1.6;color:{P["text_secondary"]}">{desc}</p>',
+                    unsafe_allow_html=True)
 
-            # Боли и потенциал автоматизации
-            col_a, col_b = st.columns(2)
-            with col_a:
+            # Метрики
+            st.markdown(f"""
+            <div class="scenario-meta">
+                <div class="scenario-meta-item">
+                    <div class="scenario-meta-val">{size}</div>
+                    <div class="scenario-meta-label">Запросов</div>
+                </div>
+                <div class="scenario-meta-item">
+                    <div class="scenario-meta-val">{uc.get("users", 0)}</div>
+                    <div class="scenario-meta-label">Пользователей</div>
+                </div>
+                <div class="scenario-meta-item">
+                    <div class="scenario-meta-val">{uc.get("avg_tokens", 0):,}</div>
+                    <div class="scenario-meta-label">Ср. токенов</div>
+                </div>
+                <div class="scenario-meta-item">
+                    <div class="scenario-meta-val">{sat_str}</div>
+                    <div class="scenario-meta-label">Оценка</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Боли и формулировки
+            col_l, col_r = st.columns(2)
+            with col_l:
                 pain_points = uc.get("pain_points", [])
                 if pain_points:
-                    st.markdown("**Боли пользователей:**")
+                    st.markdown(f'<div class="section-label" style="margin-bottom:8px">Боли пользователей</div>',
+                        unsafe_allow_html=True)
                     for p in pain_points:
-                        st.markdown(f"- {p}")
-
-                auto = uc.get("automation_potential", "")
-                if auto:
-                    st.markdown(f"**Потенциал автоматизации:** {auto_icon} {auto}")
-
-            with col_b:
-                typical = uc.get("typical_phrases", [])
-                if typical:
-                    st.markdown("**Типовые формулировки:**")
-                    for t in typical:
-                        st.markdown(f'- _{t}_')
+                        st.markdown(f'<div class="pain-item">{p}</div>', unsafe_allow_html=True)
 
                 rec = uc.get("recommendation", "")
                 if rec:
-                    st.markdown(f"**Рекомендация:** {rec}")
+                    st.markdown(f'<div class="section-label" style="margin:16px 0 8px">Рекомендация</div>',
+                        unsafe_allow_html=True)
+                    st.info(rec)
 
-            # Метрики
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Запросов", uc["size"])
-            m2.metric("Пользователей", uc.get("users", 0))
-            m3.metric("Ср. токены", f"{uc.get('avg_tokens', 0):,}")
+            with col_r:
+                typical = uc.get("typical_phrases", [])
+                if typical:
+                    st.markdown(f'<div class="section-label" style="margin-bottom:8px">Типовые формулировки</div>',
+                        unsafe_allow_html=True)
+                    for t in typical:
+                        st.markdown(f'<div class="phrase-item">"{t}"</div>', unsafe_allow_html=True)
 
-            # Ключевые термины и примеры
-            st.markdown("**Ключевые термины:** " + ", ".join(uc.get("top_terms", [])))
+            # Термины и примеры
+            terms = ", ".join(uc.get("top_terms", []))
+            st.markdown(f"""
+            <div class="section-label" style="margin:20px 0 6px">Ключевые термины</div>
+            <p style="font-size:0.85rem;color:{P['text_secondary']}">{terms}</p>
+            """, unsafe_allow_html=True)
 
-            st.markdown("**Примеры запросов:**")
-            for i, ex in enumerate(uc.get("examples", [])[:3], 1):
-                st.markdown(f"{i}. *{ex}...*")
+            examples = uc.get("examples", [])
+            if examples:
+                st.markdown(f'<div class="section-label" style="margin:16px 0 8px">Примеры запросов</div>',
+                    unsafe_allow_html=True)
+                for i, ex in enumerate(examples[:3], 1):
+                    st.markdown(f'<div class="example-item"><span class="example-num">{i}.</span>{ex}...</div>',
+                        unsafe_allow_html=True)
 
 
 # ── Tab 3: Тренды ─────────────────────────────────────────────────────
 
 def tab_trends(analytics: dict):
-    st.markdown("### Динамика по времени")
     timeline = pd.DataFrame(analytics["timeline"])
 
     if not timeline.empty:
-        fig_timeline = make_subplots(
+        fig = make_subplots(
             rows=2, cols=1,
             subplot_titles=("Количество запросов", "Средний размер (токены)"),
-            vertical_spacing=0.15,
+            vertical_spacing=0.2,
         )
-        fig_timeline.add_trace(
-            go.Scatter(
-                x=timeline["date"], y=timeline["requests"],
-                mode="lines+markers", name="Запросы",
-                line=dict(color="#667eea", width=2),
-            ), row=1, col=1,
+        fig.add_trace(go.Scatter(
+            x=timeline["date"], y=timeline["requests"],
+            mode="lines+markers", name="Запросы",
+            line=dict(color=P["purple"], width=2),
+            marker=dict(size=4),
+            fill="tozeroy", fillcolor="rgba(74,0,180,0.04)",
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=timeline["date"], y=timeline["avg_tokens"],
+            mode="lines+markers", name="Токены",
+            line=dict(color=P["purple_light"], width=2),
+            marker=dict(size=4),
+            fill="tozeroy", fillcolor="rgba(123,47,224,0.04)",
+        ), row=2, col=1)
+        fig.update_layout(
+            height=460, showlegend=False,
+            margin=dict(t=50, b=20, l=50, r=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Inter, sans-serif", size=11, color=P["text_secondary"]),
         )
-        fig_timeline.add_trace(
-            go.Scatter(
-                x=timeline["date"], y=timeline["avg_tokens"],
-                mode="lines+markers", name="Ср. токены",
-                line=dict(color="#f093fb", width=2),
-            ), row=2, col=1,
-        )
-        fig_timeline.update_layout(height=500, showlegend=False, margin=dict(t=40, b=20))
-        st.plotly_chart(fig_timeline, use_container_width=True)
+        fig.update_xaxes(gridcolor="#F0F0F0", zeroline=False)
+        fig.update_yaxes(gridcolor="#F0F0F0", zeroline=False)
+        fig.update_annotations(font=dict(family="Inter, sans-serif", size=12, color=P["text"]))
+        st.plotly_chart(fig, use_container_width=True)
 
     # Тепловая карта
     raw_df = analytics["raw_df"]
@@ -454,131 +907,163 @@ def tab_trends(analytics: dict):
         fig_heat = px.imshow(
             heatmap_pivot,
             labels=dict(x="Час", y="День недели", color="Запросов"),
-            color_continuous_scale="Viridis", aspect="auto",
+            color_continuous_scale=[
+                [0, "#FAFAF8"],
+                [0.25, "#EDE9FE"],
+                [0.5, "#C4B5FD"],
+                [0.75, "#7B2FE0"],
+                [1, "#4A00B4"],
+            ],
+            aspect="auto",
         )
-        fig_heat.update_layout(height=350, margin=dict(t=40, b=20))
-        st.markdown("### Тепловая карта активности")
+        fig_heat.update_layout(
+            height=300, margin=dict(t=50, b=20, l=20, r=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Inter, sans-serif", size=11, color=P["text_secondary"]),
+        )
+        st.markdown(f"""
+        <div class="section-label" style="margin:32px 0 8px">
+            <span class="section-marker"></span>Тепловая карта активности
+        </div>
+        """, unsafe_allow_html=True)
         st.plotly_chart(fig_heat, use_container_width=True)
 
 
 # ── Tab 4: Пользователи ───────────────────────────────────────────────
 
 def tab_users(analytics: dict):
-    st.markdown("### Топ активных пользователей")
     top_users = analytics["top_users"]
     if top_users:
         users_df = pd.DataFrame({
             "Пользователь": list(top_users.keys()),
             "Запросов": list(top_users.values()),
-        }).sort_values("Запросов", ascending=True)
-        fig_users = px.bar(
+        }).sort_values("Запросов", ascending=True).tail(10)
+
+        fig = px.bar(
             users_df, x="Запросов", y="Пользователь",
-            orientation="h", color="Запросов",
-            color_continuous_scale="Viridis",
+            orientation="h",
+            color="Запросов",
+            color_continuous_scale=[[0, "#EDE9FE"], [1, "#4A00B4"]],
         )
-        fig_users.update_layout(height=400, margin=dict(t=20, b=20))
-        st.plotly_chart(fig_users, use_container_width=True)
+        fig.update_layout(
+            height=360, margin=dict(t=20, b=20, l=20, r=20),
+            showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Inter, sans-serif", size=11, color=P["text_secondary"]),
+        )
+        fig.update_xaxes(gridcolor="#F0F0F0", zeroline=False)
+        fig.update_yaxes(gridcolor="#F0F0F0", zeroline=False)
+        st.plotly_chart(fig, use_container_width=True)
 
     raw_df = analytics["raw_df"]
     if "satisfaction_score" in raw_df.columns:
         sat_values = pd.to_numeric(raw_df["satisfaction_score"], errors="coerce").dropna()
         if len(sat_values) > 0:
-            st.markdown("### Распределение оценок удовлетворённости")
+            st.markdown(f"""
+            <div class="section-label" style="margin:32px 0 8px">
+                <span class="section-marker"></span>Распределение оценок
+            </div>
+            """, unsafe_allow_html=True)
             fig_sat = px.histogram(
                 x=sat_values, nbins=5,
                 labels={"x": "Оценка", "y": "Количество"},
-                color_discrete_sequence=["#667eea"],
+                color_discrete_sequence=[P["purple"]],
             )
-            fig_sat.update_layout(height=300, margin=dict(t=20, b=20))
+            fig_sat.update_traces(marker=dict(line=dict(color=P["white"], width=1)))
+            fig_sat.update_layout(
+                height=260, margin=dict(t=20, b=20),
+                bargap=0.2,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Inter, sans-serif", size=11, color=P["text_secondary"]),
+            )
+            fig_sat.update_xaxes(gridcolor="#F0F0F0", zeroline=False)
+            fig_sat.update_yaxes(gridcolor="#F0F0F0", zeroline=False)
             st.plotly_chart(fig_sat, use_container_width=True)
 
 
-# ── Рекомендации CTO ──────────────────────────────────────────────────
+# ── Рекомендации ───────────────────────────────────────────────────────
 
 def render_recommendations(analytics: dict):
     st.markdown("---")
-    st.markdown("## 💡 Рекомендации для CTO")
+    st.markdown(f"""
+    <div class="section-label" style="margin-bottom:20px">
+        <span class="section-marker"></span>Рекомендации для CTO
+    </div>
+    """, unsafe_allow_html=True)
 
-    # LLM-инсайты (если есть)
     if analytics.get("llm_insights"):
-        st.markdown("### AI-аналитика")
         st.markdown(analytics["llm_insights"])
         st.markdown("---")
 
     summary = analytics["summary"]
-    recommendations = []
+    recs = []
 
     if analytics["category_stats"]:
         top_cat = max(analytics["category_stats"], key=analytics["category_stats"].get)
-        top_cat_pct = analytics["category_stats"][top_cat] / summary["total_requests"] * 100
-        recommendations.append(
-            f"**Топ-категория:** «{top_cat}» — {top_cat_pct:.1f}% всех запросов. "
-            f"Стоит приоритизировать автоматизацию и улучшение инструментов."
-        )
+        pct = analytics["category_stats"][top_cat] / summary["total_requests"] * 100
+        recs.append(f"**Топ-категория:** {top_cat} — {pct:.1f}% запросов. Приоритизируйте автоматизацию.")
 
-    low_sat = [
-        (uid, uc) for uid, uc in analytics["use_cases"].items()
-        if uc.get("avg_satisfaction") is not None and uc["avg_satisfaction"] < 3.0
-    ]
+    low_sat = [uc for uc in analytics["use_cases"].values()
+               if uc.get("avg_satisfaction") is not None and uc["avg_satisfaction"] < 3.0]
     if low_sat:
-        recommendations.append(
-            f"**Проблемные зоны:** {len(low_sat)} сценариев с удовлетворённостью ниже 3/5. "
-            f"Требуется анализ качества ответов."
-        )
+        recs.append(f"**Проблемные зоны:** {len(low_sat)} сценариев с оценкой ниже 3/5.")
 
-    slow_cases = [
-        (uid, uc) for uid, uc in analytics["use_cases"].items()
-        if uc.get("avg_response_time", 0) > 30
-    ]
-    if slow_cases:
-        recommendations.append(
-            f"**Производительность:** {len(slow_cases)} сценариев со средним временем ответа >30с."
-        )
+    slow = [uc for uc in analytics["use_cases"].values()
+            if uc.get("avg_response_time", 0) > 30]
+    if slow:
+        recs.append(f"**Производительность:** {len(slow)} сценариев с ответом >30с.")
 
-    # Автоматизация
-    high_auto = [
-        uc for uc in analytics["use_cases"].values()
-        if uc.get("automation_potential") == "high"
-    ]
+    high_auto = [uc for uc in analytics["use_cases"].values()
+                 if uc.get("automation_potential") == "high"]
     if high_auto:
         names = [uc.get("name", "") for uc in high_auto[:3]]
-        recommendations.append(
-            f"**Высокий потенциал автоматизации:** {', '.join(names)}. "
-            f"Рекомендуется приоритизировать автоматизацию этих сценариев."
-        )
+        recs.append(f"**Автоматизация:** {', '.join(names)}. Высокий потенциал.")
 
-    for rec in recommendations:
-        st.markdown(f"- {rec}")
+    for i, rec in enumerate(recs, 1):
+        st.markdown(f"""
+        <div class="rec-card">
+            <span class="rec-num">{i}</span>
+            <span class="rec-text">{rec}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
 
-# ── Главная функция ────────────────────────────────────────────────────
+# ── Главная ────────────────────────────────────────────────────────────
 
 def main():
-    st.title("📡 Промпт-радар")
-    st.caption("Аналитика запросов пользователей к ИИ-агентам | Upload → Classify → Cluster → Report")
+    st.markdown(f"""
+    <div class="hero-header">
+        <h1>Промпт-радар</h1>
+        <p>Аналитика запросов к ИИ-агентам  ·  Классификация  ·  Сценарии  ·  Рекомендации</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     llm_client, n_clusters = render_sidebar()
-    df, source_name = load_data()
+    df = load_data()
 
     if df is None:
-        st.info("⬆️ Загрузите файл с логами или выберите демо-датасет для начала анализа")
+        st.markdown(f"""
+        <div style="text-align:center;padding:100px 40px;color:{P['text_secondary']}">
+            <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;
+            color:{P['text']};margin-bottom:8px">Загрузите данные</div>
+            <p style="font-size:0.9rem">CSV или JSON с логами запросов к ИИ-агенту</p>
+        </div>
+        """, unsafe_allow_html=True)
         st.stop()
         return
 
-    # Предпросмотр данных
-    with st.expander("👀 Предпросмотр данных", expanded=False):
+    with st.expander("Предпросмотр данных"):
         st.dataframe(df.head(10), use_container_width=True)
-        st.caption(f"Колонки: {', '.join(df.columns)}")
 
-    # Запуск анализа
-    with st.spinner(f"Анализирую {len(df)} запросов..." + (" (LLM-режим)" if llm_client else " (режим ключевых слов)")):
+    mode_str = "LLM" if llm_client else "ключевые слова"
+    with st.spinner(f"Анализ {len(df)} запросов ({mode_str})..."):
         analytics = build_analytics(df, llm=llm_client, n_clusters=n_clusters)
 
     render_kpi(analytics["summary"])
 
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📂 Категории", "🔍 Сценарии", "📈 Тренды", "👥 Пользователи"
-    ])
+    tab1, tab2, tab3, tab4 = st.tabs(["Категории", "Сценарии", "Тренды", "Пользователи"])
 
     with tab1:
         tab_categories(analytics)
