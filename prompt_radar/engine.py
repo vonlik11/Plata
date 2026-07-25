@@ -113,10 +113,11 @@ def extract_use_cases(
     actual_clusters = min(n_clusters, max(2, len(texts) // 3))
 
     # TF-IDF векторизация
+    min_df = 1 if len(texts) < 50 else max(1, len(texts) // 100)
     vectorizer = TfidfVectorizer(
         max_features=5000,
         ngram_range=(1, 2),
-        min_df=max(1, len(texts) // 100),
+        min_df=min_df,
         max_df=0.95,
     )
     tfidf_matrix = vectorizer.fit_transform(texts)
@@ -379,15 +380,18 @@ def build_analytics(
 
     # ── 3. Временные тренды ────────────────────────────────────────────
     df["date"] = df["timestamp"].dt.date
-    timeline = df.groupby("date").agg(
-        requests=("id", "count"),
-        avg_tokens=("token_count", "mean"),
-        avg_satisfaction=(
+    agg_dict = {
+        "requests": ("id", "count"),
+        "avg_tokens": ("token_count", "mean"),
+    }
+    if "satisfaction_score" in df.columns:
+        agg_dict["avg_satisfaction"] = (
             "satisfaction_score",
-            lambda x: pd.to_numeric(x, errors="coerce").mean()
-            if "satisfaction_score" in df.columns else np.nan
-        ),
-    ).reset_index()
+            lambda x: pd.to_numeric(x, errors="coerce").mean(),
+        )
+    timeline = df.groupby("date").agg(**agg_dict).reset_index()
+    if "avg_satisfaction" not in timeline.columns:
+        timeline["avg_satisfaction"] = np.nan
     timeline["date"] = timeline["date"].astype(str)
     timeline["avg_tokens"] = timeline["avg_tokens"].round(0)
     timeline["avg_satisfaction"] = timeline["avg_satisfaction"].round(2)

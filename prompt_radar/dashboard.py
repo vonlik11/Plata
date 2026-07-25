@@ -106,13 +106,53 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Кастомные стили ─────────────────────────────────────────────────────
+
+st.markdown("""
+<style>
+    /* Уменьшить отступ после заголовка */
+    h1 { margin-bottom: 0.2rem !important; }
+    h1 + p { margin-bottom: 1.5rem !important; }
+
+    /* Секция загрузки — компактнее */
+    h2 { margin-top: 0.5rem !important; }
+
+    /* Success-плашки — мягкий зелёный */
+    div[data-testid="stAlert"][kind="success"] {
+        background: rgba(34, 197, 94, 0.12) !important;
+        border: 1px solid rgba(34, 197, 94, 0.3) !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="stAlert"][kind="success"] p {
+        color: #4ade80 !important;
+    }
+
+    /* Кнопки — скруглённые */
+    button[kind="primary"], button[kind="secondary"] {
+        border-radius: 8px !important;
+    }
+
+    /* Expander — отступ сверху */
+    div[data-testid="stExpander"] {
+        margin-top: 1rem !important;
+    }
+
+    /* File uploader — контрастная рамка */
+    section[data-testid="stFileUploader"] {
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 0.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 # ── Боковая панель ─────────────────────────────────────────────────────
 
 def render_sidebar():
-    st.sidebar.markdown("## ⚙️ Настройки")
+    st.sidebar.markdown("## Настройки")
 
-    st.sidebar.markdown("### 🤖 LLM API (опционально)")
+    st.sidebar.markdown("### LLM API (опционально)")
     use_llm = st.sidebar.toggle("Использовать LLM для аналитики", value=False)
 
     llm_client = None
@@ -139,7 +179,7 @@ def render_sidebar():
                 api_key=api_key,
                 model=model,
             )
-            if st.sidebar.button("🔌 Проверить подключение"):
+            if st.sidebar.button("Проверить подключение"):
                 with st.spinner("Проверяю..."):
                     ok, msg = llm_client.test_connection()
                     if ok:
@@ -149,7 +189,7 @@ def render_sidebar():
         else:
             st.sidebar.warning("Введите API Key для активации LLM")
 
-    st.sidebar.markdown("### 📊 Параметры анализа")
+    st.sidebar.markdown("### Параметры анализа")
     n_clusters = st.sidebar.slider(
         "Число кластеров (сценариев)",
         min_value=5, max_value=30, value=15,
@@ -157,7 +197,7 @@ def render_sidebar():
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### ℹ️ О проекте")
+    st.sidebar.markdown("### О проекте")
     st.sidebar.info(
         "**Промпт-радар** автоматически структурирует логи запросов к ИИ-агентам:\n"
         "- Классифицирует по категориям\n"
@@ -172,16 +212,16 @@ def render_sidebar():
 # ── Загрузка данных ────────────────────────────────────────────────────
 
 def load_data():
-    st.markdown("## 📂 Загрузка данных")
+    st.markdown("## Загрузка данных")
 
-    col_upload, col_demo = st.columns([2, 1])
+    col_upload, col_demo = st.columns([2, 1], gap="large")
 
     df = None
     source_name = None
 
     with col_upload:
         uploaded_file = st.file_uploader(
-            "Загрузите CSV или JSON с логами запросов",
+            "CSV или JSON с логами запросов",
             type=["csv", "json", "tsv", "txt"],
             help="Файл должен содержать колонку с текстом запроса. "
                  "Опционально: timestamp, user_id, token_count, satisfaction_score",
@@ -190,12 +230,12 @@ def load_data():
             try:
                 df = parse_uploaded_file(uploaded_file)
                 source_name = uploaded_file.name
-                st.success(f"Загружено {len(df)} записей из {uploaded_file.name}")
+                st.success(f"Загружено {len(df):,} записей из {uploaded_file.name}")
             except Exception as e:
                 st.error(f"Ошибка парсинга: {e}")
 
     with col_demo:
-        st.markdown("#### Или используйте демо-датасет")
+        st.markdown("**Демо-датасет**")
         data_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
         )
@@ -204,14 +244,14 @@ def load_data():
             if os.path.exists(data_dir) else []
         )
         if csv_files:
-            demo_file = st.selectbox("Demo-файл", csv_files)
-            if st.button("📊 Загрузить демо-данные"):
+            demo_file = st.selectbox("Файл", csv_files, label_visibility="collapsed")
+            if st.button("Загрузить демо-данные", use_container_width=True):
                 df = pd.read_csv(os.path.join(data_dir, demo_file))
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
                 source_name = demo_file
-                st.success(f"Загружено {len(df)} записей из {demo_file}")
+                st.success(f"Загружено {len(df):,} записей из {demo_file}")
 
-    with st.expander("📋 Поддерживаемые форматы данных"):
+    with st.expander("Поддерживаемые форматы данных"):
         st.markdown("""
         **Минимальный формат** — CSV/JSON с одной колонкой текста запросов.
 
@@ -234,7 +274,7 @@ def load_data():
 # ── KPI карточки ───────────────────────────────────────────────────────
 
 def render_kpi(summary: dict):
-    st.markdown("## 📊 Обзор")
+    st.markdown("## Обзор")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Всего запросов", f"{summary['total_requests']:,}")
@@ -446,7 +486,7 @@ def tab_users(analytics: dict):
 
 def render_recommendations(analytics: dict):
     st.markdown("---")
-    st.markdown("## 💡 Рекомендации для CTO")
+    st.markdown("## Рекомендации для CTO")
 
     if analytics.get("llm_insights"):
         st.markdown("### AI-аналитика")
@@ -501,18 +541,18 @@ def render_recommendations(analytics: dict):
 # ── Главная функция ────────────────────────────────────────────────────
 
 def main():
-    st.title("📡 Промпт-радар")
+    st.markdown("# Промпт-радар")
     st.caption("Аналитика запросов пользователей к ИИ-агентам | Upload → Classify → Cluster → Report")
 
     llm_client, n_clusters = render_sidebar()
     df, source_name = load_data()
 
     if df is None:
-        st.info("⬆️ Загрузите файл с логами или выберите демо-датасет для начала анализа")
+        st.info("Загрузите файл с логами или выберите демо-датасет для начала анализа")
         st.stop()
         return
 
-    with st.expander("👀 Предпросмотр данных", expanded=False):
+    with st.expander("Предпросмотр данных", expanded=False):
         st.dataframe(df.head(10), use_container_width=True)
         st.caption(f"Колонки: {', '.join(df.columns)}")
 
@@ -522,7 +562,7 @@ def main():
     render_kpi(analytics["summary"])
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📂 Категории", "🔍 Сценарии", "📈 Тренды", "👥 Пользователи"
+        "Категории", "Сценарии", "Тренды", "Пользователи"
     ])
 
     with tab1:
